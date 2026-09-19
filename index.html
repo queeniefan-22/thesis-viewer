@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 
-  <title>Thesis</title>
+  <title>Casting the In-between</title>
 
   <style>
     * {
@@ -15,8 +16,11 @@
       margin: 0;
       padding: 0;
       background: #f2f2f2;
-      scroll-behavior: smooth;
     }
+
+    /* =========================
+       DESKTOP
+       ========================= */
 
     body {
       padding: 60px 30px;
@@ -45,6 +49,7 @@
     .page {
       position: relative;
       width: 50%;
+      flex-shrink: 0;
     }
 
     .cover .page {
@@ -59,7 +64,6 @@
       box-shadow: 0 4px 18px rgba(0,0,0,0.12);
     }
 
-    /* Clickable PDF links sit invisibly over the rendered page */
     .linkLayer {
       position: absolute;
       inset: 0;
@@ -75,29 +79,105 @@
       text-decoration: none;
     }
 
+
+    /* =========================
+       MOBILE BOOK VIEWER
+       ========================= */
+
     @media (max-width: 700px) {
+
+      html,
       body {
-        padding: 25px 10px;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #f2f2f2;
+      }
+
+      body {
+        padding: 0;
       }
 
       #viewer {
-        gap: 25px;
+        width: 100vw;
+        height: 100dvh;
+
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+
+        gap: 0;
+
+        overflow-x: auto;
+        overflow-y: hidden;
+
+        scroll-snap-type: x mandatory;
+        scroll-behavior: smooth;
+
+        -webkit-overflow-scrolling: touch;
+
+        scrollbar-width: none;
       }
 
-      .spread {
-        width: 100%;
+      #viewer::-webkit-scrollbar {
+        display: none;
       }
 
+      /* On mobile, the desktop "spread"
+         containers disappear from layout. */
+
+      .spread,
       .spread.cover {
-        width: 50%;
+        display: contents;
+      }
+
+      .page,
+      .cover .page {
+        width: 100vw;
+        height: 100dvh;
+
+        flex: 0 0 100vw;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        padding:
+          max(18px, env(safe-area-inset-top))
+          18px
+          max(18px, env(safe-area-inset-bottom));
+
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+      }
+
+      canvas {
+        width: auto;
+        height: auto;
+
+        max-width: 100%;
+        max-height: 100%;
+
+        object-fit: contain;
+
+        box-shadow: 0 3px 14px rgba(0,0,0,0.14);
+      }
+
+      .linkLayer {
+        /*
+        JS below resizes/repositions this layer so it sits
+        directly over the rendered PDF page.
+        */
       }
     }
   </style>
 </head>
 
+
 <body>
 
 <div id="viewer"></div>
+
 
 <script type="module">
 
@@ -112,140 +192,296 @@
 
   const pdf = await pdfjsLib.getDocument(pdfURL).promise;
 
-  // Keeps track of where every PDF page appears on the webpage.
   const pageElements = new Map();
 
+
+  /* -------------------------
+     Detect mobile mode
+     ------------------------- */
+
+  function isMobile() {
+    return window.matchMedia("(max-width: 700px)").matches;
+  }
+
+
+  /* -------------------------
+     Navigate to PDF page
+     ------------------------- */
+
   async function goToDestination(dest) {
+
     try {
+
       let explicitDest = dest;
 
-      // Named PDF destination
       if (typeof dest === "string") {
         explicitDest = await pdf.getDestination(dest);
       }
 
       if (!explicitDest || !explicitDest[0]) return;
 
-      const pageIndex = await pdf.getPageIndex(explicitDest[0]);
+      const pageIndex =
+        await pdf.getPageIndex(explicitDest[0]);
+
       const pageNumber = pageIndex + 1;
 
-      const target = pageElements.get(pageNumber);
+      const target =
+        pageElements.get(pageNumber);
 
-      if (target) {
+      if (!target) return;
+
+
+      /* MOBILE:
+         horizontally slide to page */
+
+      if (isMobile()) {
+
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+          inline: "start"
+        });
+
+      }
+
+      /* DESKTOP:
+         vertically scroll to page */
+
+      else {
+
         target.scrollIntoView({
           behavior: "smooth",
           block: "start"
         });
+
       }
 
-    } catch (error) {
-      console.error("Could not open PDF destination:", error);
+    }
+
+    catch (error) {
+      console.error(
+        "Could not open PDF destination:",
+        error
+      );
     }
   }
 
-  async function renderPage(pageNumber, container) {
 
-    const page = await pdf.getPage(pageNumber);
+  /* -------------------------
+     Render one PDF page
+     ------------------------- */
 
-    const viewport = page.getViewport({ scale: 1.6 });
+  async function renderPage(
+    pageNumber,
+    container
+  ) {
 
-    const pageWrapper = document.createElement("div");
+    const page =
+      await pdf.getPage(pageNumber);
+
+    const viewport =
+      page.getViewport({
+        scale: 1.6
+      });
+
+
+    const pageWrapper =
+      document.createElement("div");
+
     pageWrapper.className = "page";
-    pageWrapper.dataset.pageNumber = pageNumber;
+    pageWrapper.dataset.pageNumber =
+      pageNumber;
 
     container.appendChild(pageWrapper);
 
-    pageElements.set(pageNumber, pageWrapper);
+    pageElements.set(
+      pageNumber,
+      pageWrapper
+    );
 
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    /* Canvas */
+
+    const canvas =
+      document.createElement("canvas");
+
+    const context =
+      canvas.getContext("2d");
+
+    canvas.width =
+      viewport.width;
+
+    canvas.height =
+      viewport.height;
 
     pageWrapper.appendChild(canvas);
+
 
     await page.render({
       canvasContext: context,
       viewport: viewport
     }).promise;
 
-    // Add the PDF's hyperlink annotations.
-    const annotations = await page.getAnnotations({
-      intent: "display"
-    });
+
+    /* -------------------------
+       PDF hyperlink annotations
+       ------------------------- */
+
+    const annotations =
+      await page.getAnnotations({
+        intent: "display"
+      });
 
     if (annotations.length > 0) {
 
-      const linkLayer = document.createElement("div");
-      linkLayer.className = "linkLayer";
+      const linkLayer =
+        document.createElement("div");
 
-      pageWrapper.appendChild(linkLayer);
+      linkLayer.className =
+        "linkLayer";
 
-      for (const annotation of annotations) {
+      pageWrapper.appendChild(
+        linkLayer
+      );
 
-        if (annotation.subtype !== "Link") continue;
 
-        const rect = viewport.convertToViewportRectangle(annotation.rect);
+      for (
+        const annotation
+        of annotations
+      ) {
 
-        const left = Math.min(rect[0], rect[2]);
-        const top = Math.min(rect[1], rect[3]);
-        const width = Math.abs(rect[0] - rect[2]);
-        const height = Math.abs(rect[1] - rect[3]);
+        if (
+          annotation.subtype !==
+          "Link"
+        ) continue;
 
-        const link = document.createElement("a");
-        link.className = "pdfLink";
+
+        const rect =
+          viewport
+            .convertToViewportRectangle(
+              annotation.rect
+            );
+
+        const left =
+          Math.min(
+            rect[0],
+            rect[2]
+          );
+
+        const top =
+          Math.min(
+            rect[1],
+            rect[3]
+          );
+
+        const width =
+          Math.abs(
+            rect[0] -
+            rect[2]
+          );
+
+        const height =
+          Math.abs(
+            rect[1] -
+            rect[3]
+          );
+
+
+        const link =
+          document.createElement("a");
+
+        link.className =
+          "pdfLink";
 
         link.style.left =
-          (left / viewport.width * 100) + "%";
+          (left /
+            viewport.width *
+            100) + "%";
 
         link.style.top =
-          (top / viewport.height * 100) + "%";
+          (top /
+            viewport.height *
+            100) + "%";
 
         link.style.width =
-          (width / viewport.width * 100) + "%";
+          (width /
+            viewport.width *
+            100) + "%";
 
         link.style.height =
-          (height / viewport.height * 100) + "%";
+          (height /
+            viewport.height *
+            100) + "%";
 
-        // Internal PDF link
+
+        /* Internal link */
+
         if (annotation.dest) {
 
           link.href = "#";
 
-          link.addEventListener("click", async (event) => {
-            event.preventDefault();
-            await goToDestination(annotation.dest);
-          });
+          link.addEventListener(
+            "click",
+            async (event) => {
+
+              event.preventDefault();
+
+              await goToDestination(
+                annotation.dest
+              );
+
+            }
+          );
 
         }
 
-        // External web link
+
+        /* External URL */
+
         else if (annotation.url) {
 
-          link.href = annotation.url;
-          link.target = "_blank";
-          link.rel = "noopener noreferrer";
+          link.href =
+            annotation.url;
+
+          link.target =
+            "_blank";
+
+          link.rel =
+            "noopener noreferrer";
 
         }
 
-        linkLayer.appendChild(link);
+
+        linkLayer.appendChild(
+          link
+        );
       }
     }
   }
 
 
-  // PAGE 1 — COVER
+  /* =========================
+     BUILD DOCUMENT
+     ========================= */
 
-  const cover = document.createElement("div");
-  cover.className = "spread cover";
+
+  /* COVER */
+
+  const cover =
+    document.createElement("div");
+
+  cover.className =
+    "spread cover";
 
   viewer.appendChild(cover);
 
-  await renderPage(1, cover);
+  await renderPage(
+    1,
+    cover
+  );
 
 
-  // PAGES 2–3, 4–5, ETC.
+  /* REMAINING PAGES */
 
   for (
     let pageNumber = 2;
@@ -253,17 +489,100 @@
     pageNumber += 2
   ) {
 
-    const spread = document.createElement("div");
-    spread.className = "spread";
+    const spread =
+      document.createElement("div");
+
+    spread.className =
+      "spread";
 
     viewer.appendChild(spread);
 
-    await renderPage(pageNumber, spread);
 
-    if (pageNumber + 1 <= pdf.numPages) {
-      await renderPage(pageNumber + 1, spread);
+    await renderPage(
+      pageNumber,
+      spread
+    );
+
+
+    if (
+      pageNumber + 1 <=
+      pdf.numPages
+    ) {
+
+      await renderPage(
+        pageNumber + 1,
+        spread
+      );
+
     }
   }
+
+
+  /* =========================
+     MOBILE LINK-LAYER ALIGNMENT
+     ========================= */
+
+  function alignMobileLinkLayers() {
+
+    if (!isMobile()) return;
+
+    document
+      .querySelectorAll(".page")
+      .forEach(pageWrapper => {
+
+        const canvas =
+          pageWrapper
+            .querySelector("canvas");
+
+        const layer =
+          pageWrapper
+            .querySelector(
+              ".linkLayer"
+            );
+
+        if (!canvas || !layer)
+          return;
+
+
+        const pageRect =
+          pageWrapper
+            .getBoundingClientRect();
+
+        const canvasRect =
+          canvas
+            .getBoundingClientRect();
+
+
+        layer.style.left =
+          (canvasRect.left -
+           pageRect.left) + "px";
+
+        layer.style.top =
+          (canvasRect.top -
+           pageRect.top) + "px";
+
+        layer.style.width =
+          canvasRect.width + "px";
+
+        layer.style.height =
+          canvasRect.height + "px";
+
+        layer.style.right =
+          "auto";
+
+        layer.style.bottom =
+          "auto";
+
+      });
+  }
+
+
+  alignMobileLinkLayers();
+
+  window.addEventListener(
+    "resize",
+    alignMobileLinkLayers
+  );
 
 </script>
 
