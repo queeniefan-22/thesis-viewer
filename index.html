@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Thesis</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #f2f2f2;
+    }
+
+    body {
+      padding: 60px 30px;
+    }
+
+    #viewer {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 50px;
+    }
+
+    .spread {
+      width: min(1400px, 95vw);
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      gap: 0;
+    }
+
+    .spread.cover {
+      width: min(700px, 47.5vw);
+    }
+
+    canvas {
+      display: block;
+      width: 50%;
+      height: auto;
+      background: white;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+    }
+
+    .cover canvas {
+      width: 100%;
+    }
+
+    @media (max-width: 700px) {
+      body {
+        padding: 25px 10px;
+      }
+
+      #viewer {
+        gap: 25px;
+      }
+
+      .spread {
+        width: 100%;
+      }
+
+      .spread.cover {
+        width: 50%;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="viewer"></div>
+
+<script type="module">
+
+  import * as pdfjsLib from
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.worker.min.mjs";
+
+  const pdfURL = "thesis.pdf";
+  const viewer = document.getElementById("viewer");
+
+  const pdf = await pdfjsLib.getDocument(pdfURL).promise;
+
+  async function renderPage(pageNumber, container) {
+
+    const page = await pdf.getPage(pageNumber);
+
+    const viewport = page.getViewport({ scale: 1.6 });
+
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    container.appendChild(canvas);
+
+    await page.render({
+      canvasContext: context,
+      viewport: viewport
+    }).promise;
+  }
+
+  // COVER — PAGE 1
+  const cover = document.createElement("div");
+  cover.className = "spread cover";
+
+  viewer.appendChild(cover);
+
+  await renderPage(1, cover);
+
+
+  // ALL REMAINING PAGES AS FACING SPREADS
+  for (let pageNumber = 2; pageNumber <= pdf.numPages; pageNumber += 2) {
+
+    const spread = document.createElement("div");
+    spread.className = "spread";
+
+    viewer.appendChild(spread);
+
+    await renderPage(pageNumber, spread);
+
+    if (pageNumber + 1 <= pdf.numPages) {
+      await renderPage(pageNumber + 1, spread);
+    }
+  }
+
+</script>
+
+</body>
+</html>
