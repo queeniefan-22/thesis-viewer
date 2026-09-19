@@ -15,6 +15,7 @@
       margin: 0;
       padding: 0;
       background: #f2f2f2;
+      scroll-behavior: smooth;
     }
 
     body {
@@ -41,16 +42,37 @@
       width: min(700px, 47.5vw);
     }
 
+    .page {
+      position: relative;
+      width: 50%;
+    }
+
+    .cover .page {
+      width: 100%;
+    }
+
     canvas {
       display: block;
-      width: 50%;
+      width: 100%;
       height: auto;
       background: white;
       box-shadow: 0 4px 18px rgba(0,0,0,0.12);
     }
 
-    .cover canvas {
-      width: 100%;
+    /* Clickable PDF links sit invisibly over the rendered page */
+    .linkLayer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .pdfLink {
+      position: absolute;
+      display: block;
+      pointer-events: auto;
+      cursor: pointer;
+      background: transparent;
+      text-decoration: none;
     }
 
     @media (max-width: 700px) {
@@ -90,11 +112,50 @@
 
   const pdf = await pdfjsLib.getDocument(pdfURL).promise;
 
+  // Keeps track of where every PDF page appears on the webpage.
+  const pageElements = new Map();
+
+  async function goToDestination(dest) {
+    try {
+      let explicitDest = dest;
+
+      // Named PDF destination
+      if (typeof dest === "string") {
+        explicitDest = await pdf.getDestination(dest);
+      }
+
+      if (!explicitDest || !explicitDest[0]) return;
+
+      const pageIndex = await pdf.getPageIndex(explicitDest[0]);
+      const pageNumber = pageIndex + 1;
+
+      const target = pageElements.get(pageNumber);
+
+      if (target) {
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "start"
+        });
+      }
+
+    } catch (error) {
+      console.error("Could not open PDF destination:", error);
+    }
+  }
+
   async function renderPage(pageNumber, container) {
 
     const page = await pdf.getPage(pageNumber);
 
     const viewport = page.getViewport({ scale: 1.6 });
+
+    const pageWrapper = document.createElement("div");
+    pageWrapper.className = "page";
+    pageWrapper.dataset.pageNumber = pageNumber;
+
+    container.appendChild(pageWrapper);
+
+    pageElements.set(pageNumber, pageWrapper);
 
     const canvas = document.createElement("canvas");
     const context = canvas.getContext("2d");
@@ -102,15 +163,80 @@
     canvas.width = viewport.width;
     canvas.height = viewport.height;
 
-    container.appendChild(canvas);
+    pageWrapper.appendChild(canvas);
 
     await page.render({
       canvasContext: context,
       viewport: viewport
     }).promise;
+
+    // Add the PDF's hyperlink annotations.
+    const annotations = await page.getAnnotations({
+      intent: "display"
+    });
+
+    if (annotations.length > 0) {
+
+      const linkLayer = document.createElement("div");
+      linkLayer.className = "linkLayer";
+
+      pageWrapper.appendChild(linkLayer);
+
+      for (const annotation of annotations) {
+
+        if (annotation.subtype !== "Link") continue;
+
+        const rect = viewport.convertToViewportRectangle(annotation.rect);
+
+        const left = Math.min(rect[0], rect[2]);
+        const top = Math.min(rect[1], rect[3]);
+        const width = Math.abs(rect[0] - rect[2]);
+        const height = Math.abs(rect[1] - rect[3]);
+
+        const link = document.createElement("a");
+        link.className = "pdfLink";
+
+        link.style.left =
+          (left / viewport.width * 100) + "%";
+
+        link.style.top =
+          (top / viewport.height * 100) + "%";
+
+        link.style.width =
+          (width / viewport.width * 100) + "%";
+
+        link.style.height =
+          (height / viewport.height * 100) + "%";
+
+        // Internal PDF link
+        if (annotation.dest) {
+
+          link.href = "#";
+
+          link.addEventListener("click", async (event) => {
+            event.preventDefault();
+            await goToDestination(annotation.dest);
+          });
+
+        }
+
+        // External web link
+        else if (annotation.url) {
+
+          link.href = annotation.url;
+          link.target = "_blank";
+          link.rel = "noopener noreferrer";
+
+        }
+
+        linkLayer.appendChild(link);
+      }
+    }
   }
 
-  // COVER — PAGE 1
+
+  // PAGE 1 — COVER
+
   const cover = document.createElement("div");
   cover.className = "spread cover";
 
@@ -119,8 +245,13 @@
   await renderPage(1, cover);
 
 
-  // ALL REMAINING PAGES AS FACING SPREADS
-  for (let pageNumber = 2; pageNumber <= pdf.numPages; pageNumber += 2) {
+  // PAGES 2–3, 4–5, ETC.
+
+  for (
+    let pageNumber = 2;
+    pageNumber <= pdf.numPages;
+    pageNumber += 2
+  ) {
 
     const spread = document.createElement("div");
     spread.className = "spread";
